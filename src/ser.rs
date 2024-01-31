@@ -1,6 +1,8 @@
-use serde::Serialize;
-use serde::ser;
 use super::error::{Error, Result};
+use serde::ser;
+use serde::Serialize;
+
+use crate::consts::*;
 
 // pub fn to_slice<'a, 'b, T>(value: &'a T, buf: &'b mut [u8]) -> Result<&'b mut [u8]>
 // where
@@ -55,13 +57,12 @@ impl<'a> Writer for SliceWriter<'a> {
     }
 }
 
-impl<'a, const N: usize> Writer for &'a mut crate::Bytes<N>
-{
+impl<'a, const N: usize> Writer for &'a mut crate::Bytes<N> {
     type Error = Error;
 
     fn write_all(&mut self, buf: &[u8]) -> Result<()> {
-        self.extend_from_slice(buf).map_err(
-            |_| Error::SerializeBufferFull(buf.len()))
+        self.extend_from_slice(buf)
+            .map_err(|_| Error::SerializeBufferFull(buf.len()))
     }
 }
 
@@ -73,7 +74,6 @@ pub struct Serializer<W>
 }
 
 impl<W: Writer> Serializer<W> {
-
     #[inline]
     pub fn new(writer: W) -> Self {
         Serializer {
@@ -92,9 +92,9 @@ impl<W: Writer> Serializer<W> {
     #[inline]
     fn write_u8(&mut self, major: u8, value: u8) -> Result<()> {
         if value <= 0x17 {
-            self.writer.write_all(&[major << 5 | value])
+            self.writer.write_all(&[major << MAJOR_OFFSET | value])
         } else {
-            let buf = [major << 5 | 24, value];
+            let buf = [major << MAJOR_OFFSET | 24, value];
             self.writer.write_all(&buf)
         }
         .map_err(|e| e.into())
@@ -105,7 +105,7 @@ impl<W: Writer> Serializer<W> {
         if value <= u16::from(u8::max_value()) {
             self.write_u8(major, value as u8)
         } else {
-            let mut buf = [major << 5 | 25, 0, 0];
+            let mut buf = [major << MAJOR_OFFSET | 25, 0, 0];
             buf[1..].copy_from_slice(&value.to_be_bytes());
             self.writer.write_all(&buf).map_err(|e| e.into())
         }
@@ -116,7 +116,7 @@ impl<W: Writer> Serializer<W> {
         if value <= u32::from(u16::max_value()) {
             self.write_u16(major, value as u16)
         } else {
-            let mut buf = [major << 5 | 26, 0, 0, 0, 0];
+            let mut buf = [major << MAJOR_OFFSET | 26, 0, 0, 0, 0];
             buf[1..].copy_from_slice(&value.to_be_bytes());
             self.writer.write_all(&buf).map_err(|e| e.into())
         }
@@ -127,18 +127,18 @@ impl<W: Writer> Serializer<W> {
         if value <= u64::from(u32::max_value()) {
             self.write_u32(major, value as u32)
         } else {
-            let mut buf = [major << 5 | 27, 0, 0, 0, 0, 0, 0, 0, 0];
+            let mut buf = [major << MAJOR_OFFSET | 27, 0, 0, 0, 0, 0, 0, 0, 0];
             buf[1..].copy_from_slice(&value.to_be_bytes());
             self.writer.write_all(&buf).map_err(|e| e.into())
         }
     }
 
     #[inline]
-    fn serialize_collection<'a>(
-        &'a mut self,
+    fn serialize_collection(
+        &mut self,
         major: u8,
         len: Option<usize>,
-    ) -> Result<CollectionSerializer<'a, W>> {
+    ) -> Result<CollectionSerializer<'_, W>> {
         let needs_eof = match len {
             Some(len) => {
                 self.write_u64(major, len as u64)?;
@@ -146,7 +146,7 @@ impl<W: Writer> Serializer<W> {
             }
             None => {
                 self.writer
-                    .write_all(&[major << 5 | 31])
+                    .write_all(&[major << MAJOR_OFFSET | 31])
                     .map_err(|e| e.into())?;
                 true
             }
@@ -181,12 +181,11 @@ where
     type SerializeTupleVariant = &'a mut Serializer<W>;
     type SerializeMap = CollectionSerializer<'a, W>;
     type SerializeStruct = &'a mut Serializer<W>;
-    type SerializeStructVariant= &'a mut Serializer<W>;
-
+    type SerializeStructVariant = &'a mut Serializer<W>;
 
     #[inline]
     fn serialize_bool(self, value: bool) -> Result<()> {
-        let value = if value { 0xf5 } else { 0xf4 };
+        let value = if value { VALUE_TRUE } else { VALUE_FALSE };
         self.writer.write_all(&[value]).map_err(|e| e.into())
     }
 
@@ -224,22 +223,22 @@ where
 
     #[inline]
     fn serialize_u8(self, value: u8) -> Result<()> {
-        self.write_u8(0, value)
+        self.write_u8(MAJOR_POSINT, value)
     }
 
     #[inline]
     fn serialize_u16(self, value: u16) -> Result<()> {
-        self.write_u16(0, value)
+        self.write_u16(MAJOR_POSINT, value)
     }
 
     #[inline]
     fn serialize_u32(self, value: u32) -> Result<()> {
-        self.write_u32(0, value)
+        self.write_u32(MAJOR_POSINT, value)
     }
 
     #[inline]
     fn serialize_u64(self, value: u64) -> Result<()> {
-        self.write_u64(0, value)
+        self.write_u64(MAJOR_POSINT, value)
     }
 
     fn serialize_f32(self, _v: f32) -> Result<()> {
@@ -259,7 +258,7 @@ where
 
     #[inline]
     fn serialize_str(self, value: &str) -> Result<()> {
-        self.write_u64(3, value.len() as u64)?;
+        self.write_u64(MAJOR_STR, value.len() as u64)?;
         self.writer
             .write_all(value.as_bytes())
             .map_err(|e| e.into())
@@ -267,13 +266,13 @@ where
 
     #[inline]
     fn serialize_bytes(self, value: &[u8]) -> Result<()> {
-        self.write_u64(2, value.len() as u64)?;
+        self.write_u64(MAJOR_BYTES, value.len() as u64)?;
         self.writer.write_all(value).map_err(|e| e.into())
     }
 
     #[inline]
     fn serialize_none(self) -> Result<()> {
-        self.writer.write_all(&[0xf6]).map_err(|e| e.into())
+        self.writer.write_all(&[VALUE_NULL]).map_err(|e| e.into())
     }
 
     #[inline]
@@ -302,18 +301,14 @@ where
         _variant: &'static str,
     ) -> Result<()> {
         // if self.packed {
-            self.serialize_u32(variant_index)
+        self.serialize_u32(variant_index)
         // } else {
         //     self.serialize_str(variant)
         // }
     }
 
     #[inline]
-    fn serialize_newtype_struct<T>(
-        self,
-        _name: &'static str,
-        value: &T,
-    ) -> Result<()>
+    fn serialize_newtype_struct<T>(self, _name: &'static str, value: &T) -> Result<()>
     where
         T: ?Sized + ser::Serialize,
     {
@@ -340,20 +335,20 @@ where
         //     self.write_u64(5, 1u64)?;
         //     variant.serialize(&mut *self)?;
         // } else {
-            self.writer.write_all(&[4 << 5 | 2]).map_err(|e| e.into())?;
-            self.serialize_unit_variant(name, variant_index, variant)?;
+        self.write_u64(MAJOR_ARRAY, 2)?;
+        self.serialize_unit_variant(name, variant_index, variant)?;
         // }
         value.serialize(self)
     }
 
     #[inline]
     fn serialize_seq(self, len: Option<usize>) -> Result<CollectionSerializer<'a, W>> {
-        self.serialize_collection(4, len)
+        self.serialize_collection(MAJOR_ARRAY, len)
     }
 
     #[inline]
     fn serialize_tuple(self, len: usize) -> Result<&'a mut Serializer<W>> {
-        self.write_u64(4, len as u64)?;
+        self.write_u64(MAJOR_ARRAY, len as u64)?;
         Ok(self)
     }
 
@@ -379,15 +374,15 @@ where
         //     variant.serialize(&mut *self)?;
         //     self.serialize_tuple(len)
         // } else {
-            self.write_u64(4, (len + 1) as u64)?;
-            self.serialize_unit_variant(name, variant_index, variant)?;
-            Ok(self)
+        self.write_u64(MAJOR_ARRAY, (len + 1) as u64)?;
+        self.serialize_unit_variant(name, variant_index, variant)?;
+        Ok(self)
         // }
     }
 
     #[inline]
     fn serialize_map(self, len: Option<usize>) -> Result<CollectionSerializer<'a, W>> {
-        self.serialize_collection(5, len)
+        self.serialize_collection(MAJOR_MAP, len)
     }
 
     // #[cfg(not(feature = "std"))]
@@ -405,7 +400,7 @@ where
 
     #[inline]
     fn serialize_struct(self, _name: &'static str, len: usize) -> Result<Self::SerializeStruct> {
-        self.write_u64(5, len as u64)?;
+        self.write_u64(MAJOR_MAP, len as u64)?;
         Ok(self)
     }
 
@@ -420,7 +415,7 @@ where
         // if self.enum_as_map {
         //     self.write_u64(5, 1u64)?;
         // } else {
-            self.writer.write_all(&[4 << 5 | 2]).map_err(|e| e.into())?;
+        self.write_u64(MAJOR_ARRAY, 2)?;
         // }
         self.serialize_unit_variant(name, variant_index, variant)?;
         self.serialize_struct(name, len)
@@ -551,7 +546,7 @@ where
     }
 }
 
-impl<'a, W> ser::SerializeStructVariant for  &'a mut Serializer<W>
+impl<'a, W> ser::SerializeStructVariant for &'a mut Serializer<W>
 where
     W: Writer,
 {
