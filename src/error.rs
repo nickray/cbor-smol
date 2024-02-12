@@ -42,12 +42,16 @@ pub enum Error {
     DeserializeBadI16,
     /// Expected a i32, was too large
     DeserializeBadI32,
+    /// Expected a i64, was too large
+    DeserializeBadI64,
     /// Expected a u8
     DeserializeBadU8,
     /// Expected a u16
     DeserializeBadU16,
     /// Expected a u32
     DeserializeBadU32,
+    /// Expected a u64
+    DeserializeBadU64,
     /// Expected a NULL marker
     DeserializeExpectedNull,
     /// Inexistent slice-to-array cast error. Used here to avoid calling unwrap.
@@ -89,16 +93,18 @@ impl Display for Error {
                 DeserializeBadI8 => "Expected a i8",
                 DeserializeBadI16 => "Expected a i16",
                 DeserializeBadI32 => "Expected a i32",
+                DeserializeBadI64 => "Expected a i64",
                 DeserializeBadMajor => "Expected a different major type",
                 DeserializeBadU8 => "Expected a u8",
                 DeserializeBadU16 => "Expected a u16",
                 DeserializeBadU32 => "Expected a u32",
+                DeserializeBadU64 => "Expected a u64",
                 DeserializeExpectedNull => "Expected 0xf6",
                 InexistentSliceToArrayError => "",
                 DeserializeNonMinimal => "Value may be valid, but not encoded in minimal way",
                 SerdeSerCustom => "Serde Serialization Error",
                 SerdeDeCustom => "Serde Deserialization Error",
-                SerdeMissingField => "Serde Missing Required Field"
+                SerdeMissingField => "Serde Missing Required Field",
             }
         )
     }
@@ -132,7 +138,7 @@ impl serde::de::Error for Error {
         //
         // `invalid length 297, expected a sequence`
         //
-        info_now!("deser error: {}",&msg);
+        info_now!("deser error: {}", &msg);
         Error::SerdeDeCustom
     }
     fn missing_field(field: &'static str) -> Self {

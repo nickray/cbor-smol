@@ -6,9 +6,10 @@ generate_macros!();
 
 pub use heapless_bytes::Bytes;
 
+pub(crate) mod consts;
 pub mod de;
-pub mod ser;
 pub mod error;
+pub mod ser;
 
 pub use error::{Error, Result};
 
@@ -16,10 +17,10 @@ pub use error::{Error, Result};
 // pub use de::take_from_bytes;
 
 // kudos to postcard, this is much nicer than returning size
-pub fn cbor_serialize<'a, 'b, T: serde::Serialize>(
-    object: &'a T,
-    buffer: &'b mut [u8],
-) -> Result<&'b [u8]> {
+pub fn cbor_serialize<'a, T: serde::Serialize>(
+    object: &T,
+    buffer: &'a mut [u8],
+) -> Result<&'a [u8]> {
     let writer = ser::SliceWriter::new(buffer);
     let mut ser = ser::Serializer::new(writer);
 
@@ -31,11 +32,10 @@ pub fn cbor_serialize<'a, 'b, T: serde::Serialize>(
     Ok(&buffer[..size])
 }
 
-
 /// Append serialization of object to existing bytes, returning length of serialized object.
-pub fn cbor_serialize_extending_bytes<'a, 'b, T: serde::Serialize, const N: usize>(
-    object: &'a T,
-    bytes: &'b mut Bytes<N>,
+pub fn cbor_serialize_extending_bytes<T: serde::Serialize, const N: usize>(
+    object: &T,
+    bytes: &mut Bytes<N>,
 ) -> Result<usize> {
     let len_before = bytes.len();
     let mut ser = ser::Serializer::new(bytes);
@@ -45,7 +45,6 @@ pub fn cbor_serialize_extending_bytes<'a, 'b, T: serde::Serialize, const N: usiz
     Ok(ser.into_inner().len() - len_before)
 }
 
-
 /// Serialize object into newly allocated Bytes.
 pub fn cbor_serialize_bytes<T: serde::Serialize, const N: usize>(object: &T) -> Result<Bytes<N>> {
     let mut data = Bytes::<N>::new();
@@ -53,11 +52,7 @@ pub fn cbor_serialize_bytes<T: serde::Serialize, const N: usize>(object: &T) -> 
     Ok(data)
 }
 
-
-pub fn cbor_deserialize<'de, T: serde::Deserialize<'de>>(
-    buffer: &'de [u8],
-) -> Result<T> {
+pub fn cbor_deserialize<'de, T: serde::Deserialize<'de>>(buffer: &'de [u8]) -> Result<T> {
     // cortex_m_semihosting::hprintln!("deserializing {:?}", buffer).ok();
     de::from_bytes(buffer)
 }
-
